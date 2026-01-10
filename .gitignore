@@ -1,0 +1,7 @@
+# Local data
+*.pdf
+*.docx
+venv/
+__pycache__/
+.env
+secrets.json
