@@ -7,26 +7,63 @@ class DossierBrain:
 Initialize Mr. Dossier's brain.
 Persona defaults to a skeptical auditor for maximum honesty.
 """
-        self.llm = Ollama(model=model)
-        self.persona = persona
+        try:
+            # Add timeout and base_url for better connection handling
+            self.llm = Ollama(
+                model=model,
+                timeout=30,  # Reduce timeout to 30 seconds
+                base_url="http://localhost:11434"  # Default Ollama URL
+            )
+            self.persona = persona
+            print(f"🤖 Connected to Ollama model: {model}")
+        except Exception as e:
+            print(f"❌ Failed to connect to Ollama: {e}")
+            print("Make sure Ollama is running with: ollama serve")
+            print(f"And the model is available: ollama pull {model}")
+            raise
 
     def _summarize_codebase(self, code_docs):
         """
 Pass 1: Catalog the actual technical evidence found in the files.
 """
-        evidence_text = "\n".join([doc.page_content[:500] for doc in code_docs]) # Limit per file
+        # Much more aggressive limits to prevent timeout
+        max_files = 5  # Reduce to just 5 files
+        max_chars_per_file = 150  # Very small chunks
 
-        summary_prompt = f"""
-Analyze the following code snippets and READMEs.
-Create a 'Technical Evidence Report' listing:
-1. Languages and Frameworks actually used.
-2. Complexity of implementations (e.g., 'Simple CRUD' vs 'Distributed Systems').
-3. Recurrent patterns or bad habits.
+        limited_docs = code_docs[:max_files]
 
-CODE DATA:
+        # Create a more concise summary
+        file_summaries = []
+        for doc in limited_docs:
+            source = doc.metadata.get('source', 'unknown')
+            filename = source.split('/')[-1] if '/' in source else source
+            content_preview = doc.page_content[:max_chars_per_file].replace('\n', ' ')
+            file_summaries.append(f"{filename}: {content_preview}")
+
+        evidence_text = "\n".join(file_summaries)
+
+        print(f"📊 Analyzing {len(limited_docs)} files (limited from {len(code_docs)} total)")
+        print(f"📏 Total characters being sent: {len(evidence_text)}")
+
+        # Much shorter, more focused prompt
+        summary_prompt = f"""Analyze these code files and list:
+1. Programming languages used
+2. Key frameworks/libraries
+3. Project complexity level
+
+Files:
 {evidence_text}
-"""
-        return self.llm.invoke(summary_prompt)
+
+Keep response under 200 words."""
+
+        try:
+            print("⏳ Sending request to Ollama...")
+            response = self.llm.invoke(summary_prompt)
+            print("✅ Received response from Ollama")
+            return response
+        except Exception as e:
+            print(f"❌ Error during code analysis: {e}")
+            return "Error: Could not analyze codebase. Check Ollama connection."
 
     def audit(self, resume_text, code_docs):
         """
@@ -35,34 +72,33 @@ Pass 2: Compare the resume claims against the code evidence.
         print("🔍 Step 1: Cataloging your code evidence...")
         code_summary = self._summarize_codebase(code_docs)
 
+        if "Error:" in code_summary:
+            return code_summary
+
         print("⚖️  Step 2: Comparing claims to reality...")
 
-        audit_prompt = f"""
-SYSTEM: You are {self.persona}. You are brutally honest, analytical, and encouraging
-but won't tolerate exaggeration.
+        # Make the audit much simpler and shorter
+        resume_snippet = resume_text[:400]  # Only first 400 chars of resume
+        code_snippet = code_summary[:200] if len(code_summary) > 200 else code_summary  # Limit code summary too
 
-CONTEXT:
-You have a candidate's RESUME and a SUMMARY OF THEIR ACTUAL CODE.
+        print(f"📏 Resume chars: {len(resume_snippet)}, Code summary chars: {len(code_snippet)}")
 
-RESUME:
-{resume_text}
+        audit_prompt = f"""Compare resume to code. Rate accuracy 1-10.
 
-ACTUAL CODE EVIDENCE:
-{code_summary}
+RESUME: {resume_snippet}
 
-TASK:
-1. Assign a 'BULLSHIT RATING' (1-10).
-    - 1: Extremely humble/Under-sold.
-    - 5: Perfectly accurate.
-    - 10: Complete hallucination/Total fraud.
-2. Identify 'THE BIGGEST LIE': The claim with the least evidence in the code.
-3. Identify 'THE HIDDEN GEM': A high-value skill found in code but missing from the resume.
-4. SUGGESTED UPDATES: Provide 3 rewritten bullet points in 'Action-Context-Result' format.
+CODE: {code_snippet}
 
-OUTPUT FORMAT: Return as Markdown.
-"""
+Give: Rating, one lie, one hidden skill. Max 100 words."""
 
-        return self.llm.invoke(audit_prompt)
+        try:
+            print("⏳ Sending audit request to Ollama...")
+            response = self.llm.invoke(audit_prompt)
+            print("✅ Received audit response from Ollama")
+            return response
+        except Exception as e:
+            print(f"❌ Error during audit: {e}")
+            return f"Error: Could not complete audit. {str(e)}"
 
     def generate_redacted_report(self, report_text):
         """

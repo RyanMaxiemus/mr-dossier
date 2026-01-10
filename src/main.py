@@ -1,9 +1,9 @@
 import argparse
 import os
-import sys
+from dotenv import load_dotenv
+
 from loaders import DocumentProcessor
 from analyzer import DossierBrain
-from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
@@ -35,7 +35,7 @@ def main():
 
     parser.add_argument(
         "--persona",
-        default=os.getenv("AUDITOR_PERSONA", "Forensic Auditor"),
+        default=os.getenv("AUDITOR_PERSONA", "Technical Forensic Auditor"),
         help="Auditor personality"
     )
 
