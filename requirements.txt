@@ -3,3 +3,4 @@ langchain-community
 pypdf
 ollama
 argparse
+python-dotenv
