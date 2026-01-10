@@ -1,6 +1,5 @@
 import os
 from langchain_community.llms import Ollama
-from langchain.prompts import ChatPromptTemplate
 
 class DossierBrain:
     def __init__(self, model="llama3", persona="Technical Forensic Auditor"):
